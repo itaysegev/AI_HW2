@@ -1,4 +1,6 @@
+import math
 import random
+import time
 
 import numpy as np
 
@@ -55,7 +57,7 @@ def dumb_heuristic2(state, agent_id):
     return sum_pawns
 
 
-def smart_heuristic(state):
+def smart_heuristic(state, agent_id):
     return
 
 
@@ -99,7 +101,41 @@ def greedy_improved(curr_state, agent_id, time_limit):
 
 
 def rb_heuristic_min_max(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+
+    def rb_min_max(curr_state, agent_id, our_turn, depth):
+        if gge.is_final_state(curr_state) or depth == 0:
+            return smart_heuristic(curr_state, agent_id)
+        # Turn <- Turn(State)
+        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
+        # Children <- Succ(State)
+        children = curr_state.get_neighbors()
+
+        if our_turn:
+            curr_max = -math.inf
+            for c in children:
+                v = rb_min_max(c, agent_to_play, False,depth -1)
+                curr_max = max(v, curr_max)
+            return curr_max
+        else:
+            curr_min = math.inf
+            for c in children:
+                v = rb_min_max(c, agent_to_play, True, depth - 1)
+                curr_min = min(v, curr_min)
+            return curr_min
+
+    start = time.time()
+    max_depth = 1
+    children = curr_state.get_neighbors()
+    best_option = children[0]
+    while(time.time() - start) < time_limit:
+        best_option = max([rb_min_max(c, agent_id, False, max_depth - 1) for c in children])
+        max_depth += 1
+    return best_option
+
+
+
+
+
 
 
 def alpha_beta(curr_state, agent_id, time_limit):
