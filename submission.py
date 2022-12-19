@@ -112,13 +112,13 @@ def rb_heuristic_min_max(curr_state, agent_id, time_limit):
 
         if our_turn:
             curr_max = -math.inf
-            for c in children:
+            for _, c in children:
                 v = rb_min_max(c, agent_to_play, False,depth -1)
                 curr_max = max(v, curr_max)
             return curr_max
         else:
             curr_min = math.inf
-            for c in children:
+            for _, c in children:
                 v = rb_min_max(c, agent_to_play, True, depth - 1)
                 curr_min = min(v, curr_min)
             return curr_min
@@ -143,7 +143,52 @@ def alpha_beta(curr_state, agent_id, time_limit):
 
 
 def expectimax(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    def rb_expectimax(curr_state, agent_id, our_turn, depth):
+        if gge.is_final_state(curr_state) or depth == 0:
+            return smart_heuristic(curr_state, agent_id)
+        # Turn <- Turn(State)
+        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
+        # Children <- Succ(State)
+        children = curr_state.get_neighbors()
+        if our_turn:
+            curr_max = -math.inf
+            for _, c in children:
+                v = rb_expectimax(c, agent_to_play, False, depth - 1)
+                curr_max = max(v, curr_max)
+            return curr_max
+        else:
+            values = []
+            u_val = 0
+            opponent_id = (agent_id + 1) % 2
+            # count the numbers of pawns that i have that aren't hidden
+            curr_opponent_not_hidden_pawns = dumb_heuristic2(curr_state, opponent_id)
+            for action, c in children:
+                double_flag = False
+                new_opponent_not_hidden_pawns = dumb_heuristic2(c, opponent_id)
+                if new_opponent_not_hidden_pawns < curr_opponent_not_hidden_pawns:
+                    double_flag = True
+                    u_val += 2
+                elif action[0][0] == 'S':
+                    double_flag = True
+                    u_val += 2
+                else:
+                    u_val += 1
+                values.append((rb_expectimax(c, agent_to_play, True, depth - 1),double_flag))
+            v = 0
+            p_val = 1/u_val
+            for val, curr_flag in values:
+                p = 2 * p_val * val if curr_flag else p_val * val
+                v += p
+            return v
+
+    start = time.time()
+    max_depth = 1
+    children = curr_state.get_neighbors()
+    best_option = children[0]
+    while (time.time() - start) < time_limit:
+        best_option = max([rb_expectimax(tup[1], agent_id, False, max_depth - 1) for tup in children])
+        max_depth += 1
+    return best_option
 
 # these is the BONUS - not mandatory
 def super_agent(curr_state, agent_id, time_limit):
