@@ -12,4 +12,6 @@ if __name__ == '__main__':
     # game.play_tournament("greedy", "greedy_improved", 50)
 
 
+    # game.play_game("expectimax", "human")
+
 
