@@ -39,12 +39,42 @@ class RBMinMax(StoppableThread):
         actions = [c[0] for c in neighbors]
         children = [c[1] for c in neighbors]
         self.best_action = actions[0]
-        while not self.stopped():
+        while True:
+            if self.stopped():
+                return
             self.num_iter += 1
-            values = [rb_min_max(child, self.agent_id, False, max_depth - 1) for child in children]
+            values = [self.rb_min_max(child, self.agent_id, False, max_depth - 1) for child in children]
+            # if self.stopped():
+            #     return
             best_value = max(values)
             self.best_action = actions[values.index(best_value)]
             max_depth += 1
+
+    def rb_min_max(self, curr_state, agent_id, our_turn, depth):
+        if gge.is_final_state(curr_state) is not None or depth == 0:
+            return super_heuristic(curr_state, agent_id)
+        if self.stopped():
+            return - math.inf if our_turn else math.inf
+        # Turn <- Turn(State)
+        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
+        # Children <- Succ(State)
+        children = curr_state.get_neighbors()
+        if our_turn:
+            curr_max = -math.inf
+            if self.stopped():
+                return curr_max
+            for _, c in children:
+                v = self.rb_min_max(c, agent_to_play, False, depth - 1)
+                curr_max = max(v, curr_max)
+            return curr_max
+        else:
+            curr_min = math.inf
+            if self.stopped():
+                return curr_min
+            for _, c in children:
+                v = self.rb_min_max(c, agent_to_play, True, depth - 1)
+                curr_min = min(v, curr_min)
+            return curr_min
 
 
 class ExpectiMax(StoppableThread):
@@ -61,12 +91,56 @@ class ExpectiMax(StoppableThread):
         actions = [c[0] for c in neighbors]
         children = [c[1] for c in neighbors]
         self.best_action = actions[0]
-        while not self.stopped():
+        while True:
+            if self.stopped():
+                return
             self.num_iter += 1
-            values = [rb_expectimax(child, self.agent_id, False, max_depth - 1) for child in children]
+            values = [self.rb_expectimax(child, self.agent_id, False, max_depth - 1) for child in children]
             best_value = max(values)
             self.best_action = actions[values.index(best_value)]
             max_depth += 1
+
+    def rb_expectimax(self, curr_state, agent_id, our_turn, depth):
+        if gge.is_final_state(curr_state) is not None or depth == 0:
+            return super_heuristic(curr_state, agent_id)
+        # Turn <- Turn(State)
+        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
+        # Children <- Succ(State)
+        children = curr_state.get_neighbors()
+        if our_turn:
+            curr_max = -math.inf
+            for _, c in children:
+                if self.stopped():
+                    return curr_max
+                v = self.rb_expectimax(c, agent_to_play, False, depth - 1)
+                curr_max = max(v, curr_max)
+            return curr_max
+        else:
+            values = []
+            u_val = 0
+            opponent_id = (agent_id + 1) % 2
+            # count the numbers of pawns that i have that aren't hidden
+            curr_opponent_not_hidden_pawns = dumb_heuristic2(curr_state, opponent_id)
+            for action, c in children:
+                double_flag = False
+                new_opponent_not_hidden_pawns = dumb_heuristic2(c, opponent_id)
+                if new_opponent_not_hidden_pawns < curr_opponent_not_hidden_pawns:
+                    double_flag = True
+                    u_val += 2
+                elif action[0][0] == 'S':
+                    double_flag = True
+                    u_val += 2
+                else:
+                    u_val += 1
+                values.append((self.rb_expectimax(c, agent_to_play, True, depth - 1), double_flag))
+            v = 0
+            p_val = 1 / u_val
+            for val, curr_flag in values:
+                if self.stopped():
+                    return v
+                p = 2 * p_val * val if curr_flag else p_val * val
+                v += p
+            return v
 
 
 # agent_id is which player I am, 0 - for the first player , 1 - if second player
@@ -204,7 +278,6 @@ def greedy_improved(curr_state, agent_id, time_limit):
     max_neighbor = None
     for neighbor in neighbor_list:
         curr_heuristic = smart_heuristic(neighbor[1], agent_id)
-        # curr_heuristic = super_heuristic(neighbor[1],agent_id)
         if curr_heuristic >= max_heuristic:
             max_heuristic = curr_heuristic
             max_neighbor = neighbor
@@ -214,33 +287,10 @@ def greedy_improved(curr_state, agent_id, time_limit):
 def rb_heuristic_min_max(curr_state, agent_id, time_limit):
     rb_minmax = RBMinMax(curr_state, agent_id)
     rb_minmax.start()
-    rb_minmax.join(timeout=time_limit - 0.2)
+    # rb_minmax.join(timeout=time_limit - 0.3)
+    time.sleep(time_limit - 0.2)
     rb_minmax.stop()
-
-    print(f"Number of iter: {rb_minmax.num_iter}")
     return rb_minmax.best_action
-
-
-def rb_min_max(curr_state, agent_id, our_turn, depth):
-        if gge.is_final_state(curr_state) is not None or depth == 0:
-            return smart_heuristic(curr_state, agent_id)
-        # Turn <- Turn(State)
-        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
-        # Children <- Succ(State)
-        children = curr_state.get_neighbors()
-
-        if our_turn:
-            curr_max = -math.inf
-            for _, c in children:
-                v = rb_min_max(c, agent_to_play, False, depth - 1)
-                curr_max = max(v, curr_max)
-            return curr_max
-        else:
-            curr_min = math.inf
-            for _, c in children:
-                v = rb_min_max(c, agent_to_play, True, depth - 1)
-                curr_min = min(v, curr_min)
-            return curr_min
 
 
 def alpha_beta(curr_state, agent_id, time_limit):
@@ -250,50 +300,10 @@ def alpha_beta(curr_state, agent_id, time_limit):
 def expectimax(curr_state, agent_id, time_limit):
     expectimax = ExpectiMax(curr_state, agent_id)
     expectimax.start()
-    expectimax.join(timeout=time_limit - 0.2)
+    # expectimax.join(timeout=time_limit - 0.2)
+    time.sleep(time_limit - 0.2)
     expectimax.stop()
-
-    print(f"Number of iter: {expectimax.num_iter}")
     return expectimax.best_action
-
-
-def rb_expectimax(curr_state, agent_id, our_turn, depth):
-    if gge.is_final_state(curr_state) is not None or depth == 0:
-        return smart_heuristic(curr_state, agent_id)
-    # Turn <- Turn(State)
-    agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
-    # Children <- Succ(State)
-    children = curr_state.get_neighbors()
-    if our_turn:
-        curr_max = -math.inf
-        for _, c in children:
-            v = rb_expectimax(c, agent_to_play, False, depth - 1)
-            curr_max = max(v, curr_max)
-        return curr_max
-    else:
-        values = []
-        u_val = 0
-        opponent_id = (agent_id + 1) % 2
-        # count the numbers of pawns that i have that aren't hidden
-        curr_opponent_not_hidden_pawns = dumb_heuristic2(curr_state, opponent_id)
-        for action, c in children:
-            double_flag = False
-            new_opponent_not_hidden_pawns = dumb_heuristic2(c, opponent_id)
-            if new_opponent_not_hidden_pawns < curr_opponent_not_hidden_pawns:
-                double_flag = True
-                u_val += 2
-            elif action[0][0] == 'S':
-                double_flag = True
-                u_val += 2
-            else:
-                u_val += 1
-            values.append((rb_expectimax(c, agent_to_play, True, depth - 1),double_flag))
-        v = 0
-        p_val = 1/u_val
-        for val, curr_flag in values:
-            p = 2 * p_val * val if curr_flag else p_val * val
-            v += p
-        return v
 
 
 # these is the BONUS - not mandatory
@@ -302,7 +312,6 @@ def super_agent(curr_state, agent_id, time_limit):
     max_heuristic = -2000
     max_neighbor = None
     for neighbor in neighbor_list:
-        # curr_heuristic = smart_heuristic(neighbor[1], agent_id)
         curr_heuristic = super_heuristic(neighbor[1], agent_id)
         if curr_heuristic >= max_heuristic:
             max_heuristic = curr_heuristic
@@ -311,7 +320,7 @@ def super_agent(curr_state, agent_id, time_limit):
 
 
 def super_heuristic(state, agent_id):
-    return 1000 * is_we_won(state,agent_id) + 25 * is_B_on_M(state, agent_id) +\
+    return 1000 * is_we_won(state, agent_id) + 25 * is_B_on_M(state, agent_id) +\
            2 * is_my_pawn_near_opponent(state, agent_id) + 10 * close_triple(state,agent_id) + \
            10 * is_both_B_on_board(state, agent_id) + 5 * is_B_on_middle(state, agent_id) +\
            is_both_M_on_board(state, agent_id) + is_M_on_board(state, agent_id) - \
