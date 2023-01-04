@@ -44,8 +44,6 @@ class RBMinMax(StoppableThread):
                 return
             self.num_iter += 1
             values = [self.rb_min_max(child, self.agent_id, False, max_depth - 1) for child in children]
-            # if self.stopped():
-            #     return
             best_value = max(values)
             self.best_action = actions[values.index(best_value)]
             max_depth += 1
@@ -74,6 +72,64 @@ class RBMinMax(StoppableThread):
             for _, c in children:
                 v = self.rb_min_max(c, agent_to_play, True, depth - 1)
                 curr_min = min(v, curr_min)
+            return curr_min
+
+
+class AlphaBeta(StoppableThread):
+    def __init__(self, curr_state, agent_id, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.agent_id = agent_id
+        self.curr_state = curr_state
+        self.best_action = None
+        self.num_iter = 0
+
+    def run(self) -> None:
+        max_depth = 1
+        neighbors = self.curr_state.get_neighbors()
+        actions = [c[0] for c in neighbors]
+        children = [c[1] for c in neighbors]
+        self.best_action = actions[0]
+        while True:
+            if self.stopped():
+                return
+            self.num_iter += 1
+            values = [self.alpha_beta(child, self.agent_id, False, max_depth - 1, -math.inf, math.inf) for child in children]
+            # if self.stopped():
+            #     return
+            best_value = max(values)
+            self.best_action = actions[values.index(best_value)]
+            max_depth += 1
+
+    def alpha_beta(self, curr_state, agent_id, our_turn, depth, alpha, beta):
+        if gge.is_final_state(curr_state) is not None or depth == 0:
+            return super_heuristic(curr_state, agent_id)
+        if self.stopped():
+            return - math.inf if our_turn else math.inf
+        # Turn <- Turn(State)
+        agent_to_play = agent_id if our_turn else ((agent_id + 1) % 2)
+        # Children <- Succ(State)
+        children = curr_state.get_neighbors()
+        if our_turn:
+            curr_max = -math.inf
+            if self.stopped():
+                return curr_max
+            for _, c in children:
+                v = self.alpha_beta(c, agent_to_play, False, depth - 1, alpha, beta)
+                curr_max = max(v, curr_max)
+                alpha = max(curr_max, alpha)
+                if curr_max >= beta:
+                    return math.inf
+            return curr_max
+        else:
+            curr_min = math.inf
+            if self.stopped():
+                return curr_min
+            for _, c in children:
+                v = self.alpha_beta(c, agent_to_play, True, depth - 1, alpha, beta)
+                curr_min = min(v, curr_min)
+                beta = min(curr_min, beta)
+                if curr_min <= alpha:
+                    return -math.inf
             return curr_min
 
 
@@ -287,20 +343,22 @@ def greedy_improved(curr_state, agent_id, time_limit):
 def rb_heuristic_min_max(curr_state, agent_id, time_limit):
     rb_minmax = RBMinMax(curr_state, agent_id)
     rb_minmax.start()
-    # rb_minmax.join(timeout=time_limit - 0.3)
     time.sleep(time_limit - 0.2)
     rb_minmax.stop()
     return rb_minmax.best_action
 
 
 def alpha_beta(curr_state, agent_id, time_limit):
-    raise NotImplementedError()
+    alpha_beta = AlphaBeta(curr_state, agent_id)
+    alpha_beta.start()
+    time.sleep(time_limit - 0.2)
+    alpha_beta.stop()
+    return alpha_beta.best_action
 
 
 def expectimax(curr_state, agent_id, time_limit):
     expectimax = ExpectiMax(curr_state, agent_id)
     expectimax.start()
-    # expectimax.join(timeout=time_limit - 0.2)
     time.sleep(time_limit - 0.2)
     expectimax.stop()
     return expectimax.best_action
@@ -433,8 +491,6 @@ def opponent_one_step_from_win(state, agent_id):
             (arr[1][1] == arr[2][0] and arr[0][2] == " " and arr[2][0] == opponent_id):
         return 1
     return 0
-
-
 
 
 
